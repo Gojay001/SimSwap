@@ -61,7 +61,7 @@ def postprocess(swapped_face, target, target_mask,smooth_mask):
 
     mask_tensor = torch.from_numpy(target_mask.copy().transpose((2, 0, 1))).float().mul_(1/255.0).cuda()
     face_mask_tensor = mask_tensor[0] + mask_tensor[1]
-    
+
     soft_face_mask_tensor, _ = smooth_mask(face_mask_tensor.unsqueeze_(0).unsqueeze_(0))
     soft_face_mask_tensor.squeeze_()
 
@@ -113,7 +113,7 @@ def reverse2wholeimage(b_align_crop_tenor_list,swaped_imgs, mats, crop_size, ori
                 target_mask = cv2.resize(tgt_mask, (crop_size,  crop_size))
                 # print(source_img)
                 target_image_parsing = postprocess(swaped_img, source_img[0].cpu().detach().numpy().transpose((1, 2, 0)), target_mask,smooth_mask)
-                
+
 
                 target_image = cv2.warpAffine(target_image_parsing, mat_rev, orisize)
                 # target_image_parsing = cv2.warpAffine(swaped_img, mat_rev, orisize)
@@ -154,22 +154,23 @@ def reverse2wholeimage(b_align_crop_tenor_list,swaped_imgs, mats, crop_size, ori
         # target_image_parsing = postprocess(target_image, source_image, tgt_mask)
 
         if use_mask:
-            target_image = np.array(target_image, dtype=np.float) * 255
+            target_image = np.array(target_image, dtype=np.float32) * 255
         else:
-            target_image = np.array(target_image, dtype=np.float)[..., ::-1] * 255
+            target_image = np.array(target_image, dtype=np.float32)[..., ::-1] * 255
 
 
         img_mask_list.append(img_mask)
         target_image_list.append(target_image)
-        
+
 
     # target_image /= 255
     # target_image = 0
-    img = np.array(oriimg, dtype=np.float)
+    img = np.array(oriimg, dtype=np.float32)
     for img_mask, target_image in zip(img_mask_list, target_image_list):
         img = img_mask * target_image + (1-img_mask) * img
-        
+
     final_img = img.astype(np.uint8)
     if not no_simswaplogo:
         final_img = logoclass.apply_frames(final_img)
-    cv2.imwrite(save_path, final_img)
+    # cv2.imwrite(save_path, final_img)
+    return final_img

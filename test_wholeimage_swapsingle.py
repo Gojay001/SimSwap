@@ -4,7 +4,7 @@ Github: https://github.com/NNNNAI
 Date: 2021-11-23 17:03:58
 LastEditors: Naiyuan liu
 LastEditTime: 2021-11-24 19:19:43
-Description: 
+Description:
 '''
 
 import cv2
@@ -60,7 +60,7 @@ if __name__ == '__main__':
 
         img_a_whole = cv2.imread(pic_a)
         img_a_align_crop, _ = app.get(img_a_whole,crop_size)
-        img_a_align_crop_pil = Image.fromarray(cv2.cvtColor(img_a_align_crop[0],cv2.COLOR_BGR2RGB)) 
+        img_a_align_crop_pil = Image.fromarray(cv2.cvtColor(img_a_align_crop[0],cv2.COLOR_BGR2RGB))
         img_a = transformer_Arcface(img_a_align_crop_pil)
         img_id = img_a.view(-1, img_a.shape[0], img_a.shape[1], img_a.shape[2])
 
@@ -102,8 +102,15 @@ if __name__ == '__main__':
         else:
             net =None
 
-        reverse2wholeimage(b_align_crop_tenor_list, swap_result_list, b_mat_list, crop_size, img_b_whole, logoclass, \
-            os.path.join(opt.output_path, 'result_whole_swapsingle.jpg'), opt.no_simswaplogo,pasring_model =net,use_mask=opt.use_mask, norm = spNorm)
+        save_name = pic_b.split('/')[-1].split('.')[0] + '_' + pic_a.split('/')[-1].split('.')[0] + '.png'
+
+        final_img = reverse2wholeimage(b_align_crop_tenor_list, swap_result_list, b_mat_list, crop_size, img_b_whole, logoclass, \
+            os.path.join(opt.output_path, save_name), opt.no_simswaplogo,pasring_model =net,use_mask=opt.use_mask, norm = spNorm)
+
+        cv2.imwrite(os.path.join(opt.output_path, 'res.png'), final_img)
+
+        save_img = cv2.hconcat([img_a_whole, img_b_whole, final_img])
+        cv2.imwrite(os.path.join(opt.output_path, save_name), save_img)
 
         print(' ')
 

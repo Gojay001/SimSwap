@@ -4,7 +4,7 @@ Github: https://github.com/NNNNAI
 Date: 2021-11-23 17:03:58
 LastEditors: Naiyuan liu
 LastEditTime: 2021-11-24 16:46:04
-Description: 
+Description:
 '''
 from __future__ import division
 import collections
@@ -49,7 +49,7 @@ class Face_detect_crop:
 
 
     def prepare(self, ctx_id, det_thresh=0.5, det_size=(640, 640), mode ='None'):
-        self.det_thresh = det_thresh
+        self.det_model.det_thresh = det_thresh
         self.mode = mode
         assert det_size is not None
         print('set det-size:', det_size)
@@ -62,7 +62,6 @@ class Face_detect_crop:
 
     def get(self, img, crop_size, max_num=0):
         bboxes, kpss = self.det_model.detect(img,
-                                             threshold=self.det_thresh,
                                              max_num=max_num,
                                              metric='default')
         if bboxes.shape[0] == 0:
@@ -74,13 +73,13 @@ class Face_detect_crop:
         #     kps = None
         #     if kpss is not None:
         #         kps = kpss[i]
-        #     M, _ = face_align.estimate_norm(kps, crop_size, mode ='None') 
+        #     M, _ = face_align.estimate_norm(kps, crop_size, mode ='None')
         #     align_img = cv2.warpAffine(img, M, (crop_size, crop_size), borderValue=0.0)
         # for i in range(bboxes.shape[0]):
         #     kps = None
         #     if kpss is not None:
         #         kps = kpss[i]
-        #     M, _ = face_align.estimate_norm(kps, crop_size, mode ='None') 
+        #     M, _ = face_align.estimate_norm(kps, crop_size, mode ='None')
         #     align_img = cv2.warpAffine(img, M, (crop_size, crop_size), borderValue=0.0)
 
         det_score = bboxes[..., 4]
@@ -91,7 +90,7 @@ class Face_detect_crop:
         kps = None
         if kpss is not None:
             kps = kpss[best_index]
-        M, _ = face_align.estimate_norm(kps, crop_size, mode = self.mode) 
+        M, _ = face_align.estimate_norm(kps, crop_size, mode = self.mode)
         align_img = cv2.warpAffine(img, M, (crop_size, crop_size), borderValue=0.0)
-        
+
         return [align_img], [M]
