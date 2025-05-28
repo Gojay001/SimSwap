@@ -34,21 +34,21 @@ class TrainOptions:
     def __init__(self):
         self.parser = argparse.ArgumentParser()
         self.initialized = False
-        
+
     def initialize(self):
-        self.parser.add_argument('--name', type=str, default='simswap', help='name of the experiment. It decides where to store samples and models')
+        self.parser.add_argument('--name', type=str, default='simswap_sample', help='name of the experiment. It decides where to store samples and models')
         self.parser.add_argument('--gpu_ids', default='0')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         self.parser.add_argument('--isTrain', type=str2bool, default='True')
 
-        # input/output sizes       
-        self.parser.add_argument('--batchSize', type=int, default=4, help='input batch size')       
+        # input/output sizes
+        self.parser.add_argument('--batchSize', type=int, default=8, help='input batch size')
 
         # for displays
-        self.parser.add_argument('--use_tensorboard', type=str2bool, default='False')
+        self.parser.add_argument('--use_tensorboard', type=str2bool, default='True')
 
         # for training
-        self.parser.add_argument('--dataset', type=str, default="/path/to/VGGFace2", help='path to the face swapping dataset')
+        self.parser.add_argument('--dataset', type=str, default="/cephFS/gaojie/data/VGG_sample", help='path to the face swapping dataset')
         self.parser.add_argument('--continue_train', type=str2bool, default='False', help='continue training: load the latest model')
         self.parser.add_argument('--load_pretrain', type=str, default='./checkpoints/simswap224_test', help='load the pretrained model from the specified location')
         self.parser.add_argument('--which_epoch', type=str, default='10000', help='which epoch to load? set to latest to use latest cached model')
@@ -57,12 +57,12 @@ class TrainOptions:
         self.parser.add_argument('--niter_decay', type=int, default=10000, help='# of iter to linearly decay learning rate to zero')
         self.parser.add_argument('--beta1', type=float, default=0.0, help='momentum term of adam')
         self.parser.add_argument('--lr', type=float, default=0.0004, help='initial learning rate for adam')
-        self.parser.add_argument('--Gdeep', type=str2bool, default='False')
+        self.parser.add_argument('--Gdeep', type=str2bool, default='True')
 
-        # for discriminators         
+        # for discriminators
         self.parser.add_argument('--lambda_feat', type=float, default=10.0, help='weight for feature matching loss')
         self.parser.add_argument('--lambda_id', type=float, default=30.0, help='weight for id loss')
-        self.parser.add_argument('--lambda_rec', type=float, default=10.0, help='weight for reconstruction loss') 
+        self.parser.add_argument('--lambda_rec', type=float, default=10.0, help='weight for reconstruction loss')
 
         self.parser.add_argument("--Arc_path", type=str, default='arcface_model/arcface_checkpoint.tar', help="run ONNX model via TRT")
         self.parser.add_argument("--total_step", type=int, default=1000000, help='total training step')
@@ -70,11 +70,11 @@ class TrainOptions:
         self.parser.add_argument("--sample_freq", type=int, default=1000, help='frequence for sampling')
         self.parser.add_argument("--model_freq", type=int, default=10000, help='frequence for saving the model')
 
-        
+
 
 
         self.isTrain = True
-        
+
     def parse(self, save=True):
         if not self.initialized:
             self.initialize()
@@ -111,7 +111,7 @@ if __name__ == '__main__':
 
     if not os.path.exists(sample_path):
         os.makedirs(sample_path)
-    
+
     log_path = os.path.join(opt.checkpoints_dir, opt.name, 'summary')
 
     if not os.path.exists(log_path):
@@ -122,17 +122,17 @@ if __name__ == '__main__':
             start_epoch, epoch_iter = np.loadtxt(iter_path , delimiter=',', dtype=int)
         except:
             start_epoch, epoch_iter = 1, 0
-        print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))        
-    else:    
+        print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))
+    else:
         start_epoch, epoch_iter = 1, 0
 
     os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu_ids)
     print("GPU used : ", str(opt.gpu_ids))
 
-    
+
     cudnn.benchmark = True
 
-    
+
 
     model = fsModel()
 
@@ -140,9 +140,8 @@ if __name__ == '__main__':
 
     #####################################################
     if opt.use_tensorboard:
-        tensorboard_writer  = tensorboard.SummaryWriter(log_path)
-        logger              = tensorboard_writer
-        
+        logger  = tensorboard.SummaryWriter(log_path)
+
     log_name = os.path.join(opt.checkpoints_dir, opt.name, 'loss_log.txt')
 
     with open(log_name, "a") as log_file:
@@ -168,7 +167,7 @@ if __name__ == '__main__':
     total_step  = opt.total_step
     import datetime
     print("Start to train at %s"%(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
-    
+
     from util.logo_class import logo_class
     logo_class.print_start_training()
     model.netD.feature_network.requires_grad_(False)
@@ -178,8 +177,8 @@ if __name__ == '__main__':
         model.netG.train()
         for interval in range(2):
             random.shuffle(randindex)
-            src_image1, src_image2  = train_loader.next()
-            
+            src_image1, src_image2  = train_loader.next()   # src_1: target, src_2: source
+
             if step%2 == 0:
                 img_id = src_image2
             else:
@@ -188,8 +187,8 @@ if __name__ == '__main__':
             img_id_112      = F.interpolate(img_id,size=(112,112), mode='bicubic')
             latent_id       = model.netArc(img_id_112)
             latent_id       = F.normalize(latent_id, p=2, dim=1)
+
             if interval:
-                
                 img_fake        = model.netG(src_image1, latent_id)
                 gen_logits,_    = model.netD(img_fake.detach(), None)
                 loss_Dgen       = (F.relu(torch.ones_like(gen_logits) + gen_logits)).mean()
@@ -202,21 +201,20 @@ if __name__ == '__main__':
                 loss_D.backward()
                 optimizer_D.step()
             else:
-                
                 # model.netD.requires_grad_(True)
                 img_fake        = model.netG(src_image1, latent_id)
                 # G loss
                 gen_logits,feat = model.netD(img_fake, None)
-                
+
                 loss_Gmain      = (-gen_logits).mean()
                 img_fake_down   = F.interpolate(img_fake, size=(112,112), mode='bicubic')
                 latent_fake     = model.netArc(img_fake_down)
                 latent_fake     = F.normalize(latent_fake, p=2, dim=1)
                 loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_id)).mean()
                 real_feat       = model.netD.get_feature(src_image1)
-                feat_match_loss = model.criterionFeat(feat["3"],real_feat["3"]) 
+                feat_match_loss = model.criterionFeat(feat["3"],real_feat["3"])
                 loss_G          = loss_Gmain + loss_G_ID * opt.lambda_id + feat_match_loss * opt.lambda_feat
-                
+
 
                 if step%2 == 0:
                     #G_Rec
@@ -226,7 +224,7 @@ if __name__ == '__main__':
                 optimizer_G.zero_grad()
                 loss_G.backward()
                 optimizer_G.step()
-                
+
 
         ############## Display results and errors ##########
         ### print out errors
@@ -245,11 +243,12 @@ if __name__ == '__main__':
             if opt.use_tensorboard:
                 for tag, value in errors.items():
                     logger.add_scalar(tag, value, step)
+
             message = '( step: %d, ) ' % (step)
             for k, v in errors.items():
                 message += '%s: %.3f ' % (k, v)
-
             print(message)
+
             with open(log_name, "a") as log_file:
                 log_file.write('%s\n' % message)
 
@@ -268,11 +267,10 @@ if __name__ == '__main__':
                 id_vector_src1  = F.normalize(id_vector_src1, p=2, dim=1)
 
                 for i in range(opt.batchSize):
-                    
                     imgs.append(save_img[i,...])
                     image_infer = src_image1[i, ...].repeat(opt.batchSize, 1, 1, 1)
                     img_fake    = model.netG(image_infer, id_vector_src1).cpu()
-                    
+
                     img_fake    = img_fake * imagenet_std
                     img_fake    = img_fake + imagenet_mean
                     img_fake    = img_fake.numpy()
@@ -285,6 +283,6 @@ if __name__ == '__main__':
         ### save latest model
         if (step+1) % opt.model_freq==0:
             print('saving the latest model (steps %d)' % (step+1))
-            model.save(step+1)            
+            model.save(step+1)
             np.savetxt(iter_path, (step+1, total_step), delimiter=',', fmt='%d')
     wandb.finish()

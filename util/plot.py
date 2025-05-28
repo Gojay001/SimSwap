@@ -4,9 +4,10 @@ import PIL
 
 def postprocess(x):
     """[0,1] to uint8."""
-    
+
     x = np.clip(255 * x, 0, 255)
-    x = np.cast[np.uint8](x)
+    # x = np.cast[np.uint8](x)
+    x = np.asarray(x, dtype=np.uint8)
     return x
 
 def tile(X, rows, cols):
