@@ -16,9 +16,10 @@ import random
 import argparse
 import numpy as np
 
+os.environ['CUDA_VISIBLE_DEVICES'] = '0'
+
 import torch
 import torch.nn.functional as F
-from torch.backends import cudnn
 import torch.utils.tensorboard as tensorboard
 
 from util import util
@@ -26,6 +27,22 @@ from util.plot import plot_batch
 
 from models.projected_model import fsModel
 from data.data_loader_Swapping import GetLoader
+
+
+def deterministic():
+    """
+    make training deterministic
+    """
+    seed = 3407
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
 
 def str2bool(v):
     return v.lower() in ('true')
@@ -36,19 +53,19 @@ class TrainOptions:
         self.initialized = False
 
     def initialize(self):
-        self.parser.add_argument('--name', type=str, default='simswap_sample', help='name of the experiment. It decides where to store samples and models')
-        self.parser.add_argument('--gpu_ids', default='0')
+        self.parser.add_argument('--name', type=str, default='simswap_gt_256', help='name of the experiment. It decides where to store samples and models')
+        self.parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
         self.parser.add_argument('--checkpoints_dir', type=str, default='./checkpoints', help='models are saved here')
         self.parser.add_argument('--isTrain', type=str2bool, default='True')
 
         # input/output sizes
-        self.parser.add_argument('--batchSize', type=int, default=8, help='input batch size')
+        self.parser.add_argument('--batchSize', type=int, default=16, help='input batch size')
 
         # for displays
         self.parser.add_argument('--use_tensorboard', type=str2bool, default='True')
 
         # for training
-        self.parser.add_argument('--dataset', type=str, default="/cephFS/gaojie/data/VGG_sample", help='path to the face swapping dataset')
+        self.parser.add_argument('--dataset', type=str, default="/cephFS/gaojie/face_swap", help='path to the face swapping dataset')
         self.parser.add_argument('--continue_train', type=str2bool, default='False', help='continue training: load the latest model')
         self.parser.add_argument('--load_pretrain', type=str, default='./checkpoints/simswap224_test', help='load the pretrained model from the specified location')
         self.parser.add_argument('--which_epoch', type=str, default='10000', help='which epoch to load? set to latest to use latest cached model')
@@ -57,7 +74,7 @@ class TrainOptions:
         self.parser.add_argument('--niter_decay', type=int, default=10000, help='# of iter to linearly decay learning rate to zero')
         self.parser.add_argument('--beta1', type=float, default=0.0, help='momentum term of adam')
         self.parser.add_argument('--lr', type=float, default=0.0004, help='initial learning rate for adam')
-        self.parser.add_argument('--Gdeep', type=str2bool, default='True')
+        self.parser.add_argument('--Gdeep', type=str2bool, default='False')
 
         # for discriminators
         self.parser.add_argument('--lambda_feat', type=float, default=10.0, help='weight for feature matching loss')
@@ -70,7 +87,7 @@ class TrainOptions:
         self.parser.add_argument("--sample_freq", type=int, default=1000, help='frequence for sampling')
         self.parser.add_argument("--model_freq", type=int, default=10000, help='frequence for saving the model')
 
-
+        self.parser.add_argument('--save_gt', type=str2bool, default='True', help='whether to save the ground truth images')
 
 
         self.isTrain = True
@@ -102,9 +119,7 @@ class TrainOptions:
         return self.opt
 
 
-if __name__ == '__main__':
-
-    opt         = TrainOptions().parse()
+def run(opt):
     iter_path   = os.path.join(opt.checkpoints_dir, opt.name, 'iter.txt')
 
     sample_path = os.path.join(opt.checkpoints_dir, opt.name, 'samples')
@@ -125,14 +140,6 @@ if __name__ == '__main__':
         print('Resuming from epoch %d at iteration %d' % (start_epoch, epoch_iter))
     else:
         start_epoch, epoch_iter = 1, 0
-
-    os.environ['CUDA_VISIBLE_DEVICES'] = str(opt.gpu_ids)
-    print("GPU used : ", str(opt.gpu_ids))
-
-
-    cudnn.benchmark = True
-
-
 
     model = fsModel()
 
@@ -157,14 +164,15 @@ if __name__ == '__main__':
 
     train_loader    = GetLoader(opt.dataset,opt.batchSize,8,1234)
 
-    randindex = [i for i in range(opt.batchSize)]
-    random.shuffle(randindex)
+    # randindex = [i for i in range(opt.batchSize)]
+    # random.shuffle(randindex)
 
     if not opt.continue_train:
         start   = 0
     else:
         start   = int(opt.which_epoch)
     total_step  = opt.total_step
+
     import datetime
     print("Start to train at %s"%(datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')))
 
@@ -176,24 +184,19 @@ if __name__ == '__main__':
     for step in range(start, total_step):
         model.netG.train()
         for interval in range(2):
-            random.shuffle(randindex)
-            src_image1, src_image2  = train_loader.next()   # src_1: target, src_2: source
+            # random.shuffle(randindex)
+            source_img, target_img, gt_img  = train_loader.next()
 
-            if step%2 == 0:
-                img_id = src_image2
-            else:
-                img_id = src_image2[randindex]
-
-            img_id_112      = F.interpolate(img_id,size=(112,112), mode='bicubic')
-            latent_id       = model.netArc(img_id_112)
-            latent_id       = F.normalize(latent_id, p=2, dim=1)
+            img_id_112 = F.interpolate(source_img, size=(112,112), mode='bicubic')
+            latent_id  = model.netArc(img_id_112)
+            latent_id  = F.normalize(latent_id, p=2, dim=1)
 
             if interval:
-                img_fake        = model.netG(src_image1, latent_id)
-                gen_logits,_    = model.netD(img_fake.detach(), None)
+                img_fake        = model.netG(target_img, latent_id)
+                gen_logits, _   = model.netD(img_fake.detach(), None)
                 loss_Dgen       = (F.relu(torch.ones_like(gen_logits) + gen_logits)).mean()
 
-                real_logits,_   = model.netD(src_image2,None)
+                real_logits, _  = model.netD(gt_img, None)
                 loss_Dreal      = (F.relu(torch.ones_like(real_logits) - real_logits)).mean()
 
                 loss_D          = loss_Dgen + loss_Dreal
@@ -202,24 +205,29 @@ if __name__ == '__main__':
                 optimizer_D.step()
             else:
                 # model.netD.requires_grad_(True)
-                img_fake        = model.netG(src_image1, latent_id)
                 # G loss
+                img_fake        = model.netG(target_img, latent_id)
                 gen_logits,feat = model.netD(img_fake, None)
-
                 loss_Gmain      = (-gen_logits).mean()
+
                 img_fake_down   = F.interpolate(img_fake, size=(112,112), mode='bicubic')
                 latent_fake     = model.netArc(img_fake_down)
                 latent_fake     = F.normalize(latent_fake, p=2, dim=1)
-                loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_id)).mean()
-                real_feat       = model.netD.get_feature(src_image1)
+
+                image_gt_down   = F.interpolate(gt_img, size=(112,112), mode='bicubic')
+                latent_gt       = model.netArc(image_gt_down)
+                latent_gt       = F.normalize(latent_gt, p=2, dim=1)
+                loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_gt)).mean()
+
+                real_feat       = model.netD.get_feature(gt_img)
                 feat_match_loss = model.criterionFeat(feat["3"],real_feat["3"])
+
                 loss_G          = loss_Gmain + loss_G_ID * opt.lambda_id + feat_match_loss * opt.lambda_feat
 
-
-                if step%2 == 0:
-                    #G_Rec
-                    loss_G_Rec  = model.criterionRec(img_fake, src_image1) * opt.lambda_rec
-                    loss_G      += loss_G_Rec
+                # if step%2 == 0:
+                #G_Rec
+                loss_G_Rec  = model.criterionRec(img_fake, gt_img) * opt.lambda_rec
+                loss_G      += loss_G_Rec
 
                 optimizer_G.zero_grad()
                 loss_G.backward()
@@ -256,29 +264,46 @@ if __name__ == '__main__':
         if (step + 1) % opt.sample_freq == 0:
             model.netG.eval()
             with torch.no_grad():
-                imgs        = list()
-                zero_img    = (torch.zeros_like(src_image1[0,...]))
-                imgs.append(zero_img.cpu().numpy())
-                save_img    = ((src_image1.cpu())* imagenet_std + imagenet_mean).numpy()
-                for r in range(opt.batchSize):
-                    imgs.append(save_img[r,...])
-                arcface_112     = F.interpolate(src_image2,size=(112,112), mode='bicubic')
-                id_vector_src1  = model.netArc(arcface_112)
-                id_vector_src1  = F.normalize(id_vector_src1, p=2, dim=1)
+                res_imgs = list()
 
+                cur_source_imgs = ((source_img.cpu())* imagenet_std + imagenet_mean).numpy()
                 for i in range(opt.batchSize):
-                    imgs.append(save_img[i,...])
-                    image_infer = src_image1[i, ...].repeat(opt.batchSize, 1, 1, 1)
-                    img_fake    = model.netG(image_infer, id_vector_src1).cpu()
+                    res_imgs.append(cur_source_imgs[i,...])
 
-                    img_fake    = img_fake * imagenet_std
-                    img_fake    = img_fake + imagenet_mean
-                    img_fake    = img_fake.numpy()
-                    for j in range(opt.batchSize):
-                        imgs.append(img_fake[j,...])
+                cur_target_imgs = ((target_img.cpu())* imagenet_std + imagenet_mean).numpy()
+                for i in range(opt.batchSize):
+                    res_imgs.append(cur_target_imgs[i,...])
+
+                arcface_112      = F.interpolate(source_img, size=(112,112), mode='bicubic')
+                id_vector_source = model.netArc(arcface_112)
+                id_vector_source = F.normalize(id_vector_source, p=2, dim=1)
+                img_fake         = model.netG(target_img, id_vector_source)
+
+                cur_res_imgs = ((img_fake.cpu()) * imagenet_std + imagenet_mean).numpy()
+                for i in range(opt.batchSize):
+                    res_imgs.append(cur_res_imgs[i,...])
+
                 print("Save test data")
-                imgs = np.stack(imgs, axis = 0).transpose(0,2,3,1)
-                plot_batch(imgs, os.path.join(sample_path, 'step_'+str(step+1)+'.jpg'))
+                res_imgs = np.stack(res_imgs, axis = 0).transpose(0,2,3,1)
+                plot_batch(res_imgs, opt.batchSize, os.path.join(sample_path, 'step_'+str(step+1)+'.jpg'))
+
+                if opt.save_gt:
+                    ref_imgs = list()
+
+                    cur_source_imgs = ((source_img.cpu())* imagenet_std + imagenet_mean).numpy()
+                    for i in range(opt.batchSize):
+                        ref_imgs.append(cur_source_imgs[i,...])
+
+                    cur_target_imgs = ((target_img.cpu())* imagenet_std + imagenet_mean).numpy()
+                    for i in range(opt.batchSize):
+                        ref_imgs.append(cur_target_imgs[i,...])
+
+                    cur_gt_imgs = ((gt_img.cpu())* imagenet_std + imagenet_mean).numpy()
+                    for i in range(opt.batchSize):
+                        ref_imgs.append(cur_gt_imgs[i,...])
+
+                    ref_imgs = np.stack(ref_imgs, axis = 0).transpose(0,2,3,1)
+                    plot_batch(ref_imgs, opt.batchSize, os.path.join(sample_path, 'ref_gt_step_'+str(step+1)+'.jpg'))
 
         ### save latest model
         if (step+1) % opt.model_freq==0:
@@ -286,3 +311,16 @@ if __name__ == '__main__':
             model.save(step+1)
             np.savetxt(iter_path, (step+1, total_step), delimiter=',', fmt='%d')
     wandb.finish()
+
+
+#--------------------------------------------------------------------
+
+if __name__ == '__main__':
+
+    deterministic()
+    torch.cuda.empty_cache()
+
+    opt = TrainOptions().parse()
+
+    opt.gpu_ids = torch.cuda.current_device()
+    run(opt)

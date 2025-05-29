@@ -25,14 +25,13 @@ def tile(X, rows, cols):
     return tiling
 
 
-def plot_batch(X, out_path):
+def plot_batch(X, cols, out_path):
     """Save batch of images tiled."""
     n_channels = X.shape[3]
     if n_channels > 3:
         X = X[:,:,:,np.random.choice(n_channels, size = 3)]
     X = postprocess(X)
-    rc = math.sqrt(X.shape[0])
-    rows = cols = math.ceil(rc)
+    rows = math.ceil(X.shape[0] / cols)
     canvas = tile(X, rows, cols)
     canvas = np.squeeze(canvas)
     PIL.Image.fromarray(canvas).save(out_path)

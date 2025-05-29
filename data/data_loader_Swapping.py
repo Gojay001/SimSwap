@@ -22,101 +22,130 @@ class data_prefetcher():
 
     def preload(self):
         try:
-            self.src_image1, self.src_image2 = next(self.dataiter)
+            self.source_img, self.target_img, self.gt_img = next(self.dataiter)
         except StopIteration:
             self.dataiter = iter(self.loader)
-            self.src_image1, self.src_image2 = next(self.dataiter)
-            
+            self.source_img, self.target_img, self.gt_img = next(self.dataiter)
+
         with torch.cuda.stream(self.stream):
-            self.src_image1  = self.src_image1.cuda(non_blocking=True)
-            self.src_image1  = self.src_image1.sub_(self.mean).div_(self.std)
-            self.src_image2  = self.src_image2.cuda(non_blocking=True)
-            self.src_image2  = self.src_image2.sub_(self.mean).div_(self.std)
+            self.source_img  = self.source_img.cuda(non_blocking=True)
+            self.source_img  = self.source_img.sub_(self.mean).div_(self.std)
+            self.target_img  = self.target_img.cuda(non_blocking=True)
+            self.target_img  = self.target_img.sub_(self.mean).div_(self.std)
+            self.gt_img      = self.gt_img.cuda(non_blocking=True)
+            self.gt_img      = self.gt_img.sub_(self.mean).div_(self.std)
 
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)
-        src_image1  = self.src_image1
-        src_image2  = self.src_image2
+        source_img  = self.source_img
+        target_img  = self.target_img
+        gt_img      = self.gt_img
         self.preload()
-        return src_image1, src_image2
-    
+        return source_img, target_img, gt_img
+
     def __len__(self):
         """Return the number of images."""
         return self.num_images
+
 
 class SwappingDataset(data.Dataset):
     """Dataset class for the Artworks dataset and content dataset."""
 
     def __init__(self,
-                    image_dir,
+                    base_dir,
                     img_transform,
-                    subffix='jpg',
+                    subffix='png',
                     random_seed=1234):
         """Initialize and preprocess the Swapping dataset."""
-        self.image_dir      = image_dir
-        self.img_transform  = img_transform   
+        self.base_dir       = base_dir
+        self.img_transform  = img_transform
         self.subffix        = subffix
-        self.dataset        = []
         self.random_seed    = random_seed
+        self.source_dataset = []
+        self.target_dataset = []
+        self.gt_dataset     = []
+
         self.preprocess()
-        self.num_images = len(self.dataset)
+
+        self.num_images = len(self.gt_dataset)
 
     def preprocess(self):
         """Preprocess the Swapping dataset."""
         print("processing Swapping dataset images...")
 
-        temp_path   = os.path.join(self.image_dir,'*/')
-        pathes      = glob.glob(temp_path)
-        self.dataset = []
-        for dir_item in pathes:
-            join_path = glob.glob(os.path.join(dir_item,'*.jpg'))
-            print("processing %s"%dir_item,end='\r')
-            temp_list = []
-            for item in join_path:
-                temp_list.append(item)
-            self.dataset.append(temp_list)
-        random.seed(self.random_seed)
-        random.shuffle(self.dataset)
-        print('Finished preprocessing the Swapping dataset, total dirs number: %d...'%len(self.dataset))
-             
-    def __getitem__(self, index):
-        """Return two src domain images and two dst domain images."""
-        dir_tmp1        = self.dataset[index]
-        dir_tmp1_len    = len(dir_tmp1)
+        name_to_path = {
+            'eceleb': '/cephFS/gaojie/data/stylegan2/eceleb',
+            'model': '/cephFS/gaojie/data/stylegan2/model'
+        }
 
-        filename1   = dir_tmp1[random.randint(0,dir_tmp1_len-1)]
-        filename2   = dir_tmp1[random.randint(0,dir_tmp1_len-1)]
-        image1      = self.img_transform(Image.open(filename1))
-        image2      = self.img_transform(Image.open(filename2))
-        return image1, image2
-    
+        gt_folders = ['eceleb_to_model_sr', 'model_to_eceleb_sr']
+        for folder in gt_folders:
+            if not os.path.exists(os.path.join(self.base_dir, folder)):
+                print(f"Folder {folder} does not exist in {self.base_dir}. Please check the path.")
+                continue
+
+            source_name = folder.split('_')[0]
+            target_name = folder.split('_')[2]
+            if source_name not in name_to_path or target_name not in name_to_path:
+                print(f"Source or target name not found in name_to_path: {source_name}, {target_name}")
+                continue
+
+            source_path = name_to_path[source_name]
+            target_path = name_to_path[target_name]
+            gt_path = os.path.join(self.base_dir, folder)
+
+            gt_names = os.listdir(gt_path)
+            for gt_name in gt_names:
+                if not gt_name.endswith(self.subffix):
+                    continue
+
+                source_name = gt_name.split('.')[0].split('_')[0]
+                target_name = gt_name.split('.')[0].split('_')[1]
+
+                self.source_dataset.append(os.path.join(source_path, source_name + '.' + self.subffix))
+                self.target_dataset.append(os.path.join(target_path, target_name + '.' + self.subffix))
+                self.gt_dataset.append(os.path.join(gt_path, gt_name))
+
+        print(f'source size: {len(self.source_dataset)}, target size: {len(self.target_dataset)}, gt size: {len(self.gt_dataset)}')
+
+    def __getitem__(self, index):
+        """Return pairs (source, target, gt)."""
+
+        source_name = self.img_transform(Image.open(self.source_dataset[index]))
+        target_name = self.img_transform(Image.open(self.target_dataset[index]))
+        gt_name     = self.img_transform(Image.open(self.gt_dataset[index]))
+
+        return source_name, target_name, gt_name
+
     def __len__(self):
         """Return the number of images."""
         return self.num_images
 
+
 def GetLoader(  dataset_roots,
                 batch_size=16,
                 dataloader_workers=8,
-                random_seed = 1234
+                random_seed=1234
                 ):
     """Build and return a data loader."""
-        
+
     num_workers         = dataloader_workers
     data_root           = dataset_roots
     random_seed         = random_seed
-    
+
     c_transforms = []
-    
+    c_transforms.append(T.Resize((256, 256)))
     c_transforms.append(T.ToTensor())
     c_transforms = T.Compose(c_transforms)
 
     content_dataset = SwappingDataset(
-                            data_root, 
+                            data_root,
                             c_transforms,
-                            "jpg",
+                            "png",
                             random_seed)
     content_data_loader = data.DataLoader(dataset=content_dataset,batch_size=batch_size,
                     drop_last=True,shuffle=True,num_workers=num_workers,pin_memory=True)
+
     prefetcher = data_prefetcher(content_data_loader)
     return prefetcher
 
