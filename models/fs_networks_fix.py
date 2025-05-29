@@ -91,9 +91,9 @@ class Generator_Adain_Upsample(nn.Module):
         super(Generator_Adain_Upsample, self).__init__()
 
         activation = nn.ReLU(True)
-        
+
         self.deep = deep
-        
+
         self.first_layer = nn.Sequential(nn.ReflectionPad2d(3), nn.Conv2d(input_nc, 64, kernel_size=7, padding=0),
                                          norm_layer(64), activation)
         ### downsample
@@ -103,7 +103,7 @@ class Generator_Adain_Upsample(nn.Module):
                                    norm_layer(256), activation)
         self.down3 = nn.Sequential(nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
                                    norm_layer(512), activation)
-                                   
+
         if self.deep:
             self.down4 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
                                        norm_layer(512), activation)
@@ -170,3 +170,58 @@ class Generator_Adain_Upsample(nn.Module):
 
         # return x, bot, features, dlatents
         return x
+
+if __name__ == "__main__":
+    model = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=9, deep=False)
+    input_tensor = torch.randn(1, 3, 256, 256)
+    dlatents = torch.randn(1, 512)
+
+    mode = 'profile'
+    # mode = 'onnx'
+
+    if mode == 'profile':
+        try:
+            from thop import profile
+            from thop.vision.basic_hooks import count_parameters
+
+            custom_ops = {}
+            def count_relu(m, x, y):
+                x = x[0]
+                nelements = x.numel()
+                m.total_ops += nelements
+
+            custom_ops[nn.ReLU] = count_relu
+
+            flops, params = profile(model, inputs=(input_tensor, dlatents), custom_ops=custom_ops)
+            print(f'FLOPs: {flops}, Params: {params}')
+            # print(f"FLOPs: {flops/1e9:.2f}G, Params: {params/1e6:.2f}M")
+        except Exception as e:
+            print(f"Error in thop: {e}")
+
+    elif mode == 'onnx':
+        model.eval()
+        input_names = ['input_image', 'latent_code']
+        output_names = ['output_image']
+
+        dynamic_axes = {
+            'input_image': {0: 'batch_size'},
+            'latent_code': {0: 'batch_size'},
+            'output_image': {0: 'batch_size'}
+        }
+
+        try:
+            torch.onnx.export(model,
+                            (input_tensor, dlatents),
+                            "SimSwap.onnx",
+                            verbose=True,
+                            input_names=input_names,
+                            output_names=output_names,
+                            opset_version=11,
+                            do_constant_folding=True,
+                            dynamic_axes=dynamic_axes)
+            print("Success to export onnx.")
+        except Exception as e:
+            print(f"Error in onnx: {e}")
+
+    else:
+        print("Unsupported mode. Use 'profile' or 'onnx'.")
