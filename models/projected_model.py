@@ -40,7 +40,7 @@ class fsModel(BaseModel):
         self.isTrain = opt.isTrain
 
         # Generator network
-        self.netG = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=9, deep=opt.Gdeep)
+        self.netG = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=opt.nBlock, deep=opt.Gdeep)
         self.netG.cuda()
 
         # Id network

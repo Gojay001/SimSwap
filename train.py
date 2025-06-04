@@ -75,6 +75,7 @@ class TrainOptions:
         self.parser.add_argument('--beta1', type=float, default=0.0, help='momentum term of adam')
         self.parser.add_argument('--lr', type=float, default=0.0004, help='initial learning rate for adam')
         self.parser.add_argument('--Gdeep', type=str2bool, default='False')
+        self.parser.add_argument('--nBlock', type=int, default=3, help='number of blocks in the generator network')
 
         # for discriminators
         self.parser.add_argument('--lambda_feat', type=float, default=10.0, help='weight for feature matching loss')

@@ -6,21 +6,8 @@ Licensed under the CC BY-NC-SA 4.0 license (https://creativecommons.org/licenses
 import torch
 import torch.nn as nn
 
+from .common import InstanceNorm, DepthConv, ConvDepthConv
 
-class InstanceNorm(nn.Module):
-    def __init__(self, epsilon=1e-8):
-        """
-            @notice: avoid in-place ops.
-            https://discuss.pytorch.org/t/encounter-the-runtimeerror-one-of-the-variables-needed-for-gradient-computation-has-been-modified-by-an-inplace-operation/836/3
-        """
-        super(InstanceNorm, self).__init__()
-        self.epsilon = epsilon
-
-    def forward(self, x):
-        x   = x - torch.mean(x, (2, 3), True)
-        tmp = torch.mul(x, x) # or x ** 2
-        tmp = torch.rsqrt(torch.mean(tmp, (2, 3), True) + self.epsilon)
-        return x * tmp
 
 class ApplyStyle(nn.Module):
     """
@@ -81,65 +68,49 @@ class ResnetBlock_Adain(nn.Module):
         out = x + y
         return out
 
+#-----------------------------------------------------------
 
-
-class Generator_Adain_Upsample(nn.Module):
-    def __init__(self, input_nc, output_nc, latent_size, n_blocks=6, deep=False,
+class Generator_Adain_Upsample_DSC3(nn.Module):
+    def __init__(self, input_nc, output_nc, latent_size, n_blocks=3, deep=False,
                  norm_layer=nn.BatchNorm2d,
                  padding_type='reflect'):
         assert (n_blocks >= 0)
-        super(Generator_Adain_Upsample, self).__init__()
+        super(Generator_Adain_Upsample_DSC3, self).__init__()
 
         activation = nn.ReLU(True)
 
         self.deep = deep
 
-        self.first_layer = nn.Sequential(nn.ReflectionPad2d(3), nn.Conv2d(input_nc, 64, kernel_size=7, padding=0),
-                                         norm_layer(64), activation)
+        self.first_layer = nn.Sequential(nn.ReflectionPad2d(3),
+                                         ConvDepthConv(input_nc, 64, 64, kernel_size=7, padding=0, norm_layer=norm_layer, activation=activation))
         ### downsample
-        self.down1 = nn.Sequential(nn.Conv2d(64, 128, kernel_size=3, stride=2, padding=1),
-                                   norm_layer(128), activation)
-        self.down2 = nn.Sequential(nn.Conv2d(128, 256, kernel_size=3, stride=2, padding=1),
-                                   norm_layer(256), activation)
-        self.down3 = nn.Sequential(nn.Conv2d(256, 512, kernel_size=3, stride=2, padding=1),
-                                   norm_layer(512), activation)
-
+        self.down1 = ConvDepthConv(64, 64, 128, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down2 = ConvDepthConv(128, 128, 256, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down3 = ConvDepthConv(256, 128, 128, 3, 2, norm_layer=norm_layer, activation=activation)
         if self.deep:
-            self.down4 = nn.Sequential(nn.Conv2d(512, 512, kernel_size=3, stride=2, padding=1),
-                                       norm_layer(512), activation)
+            self.down4 = ConvDepthConv(128, 128, 128, 3, 2, norm_layer=norm_layer, activation=activation)
 
         ### resnet blocks
         BN = []
         for i in range(n_blocks):
-            BN += [
-                ResnetBlock_Adain(512, latent_size=latent_size, padding_type=padding_type, activation=activation)]
+            BN += [ResnetBlock_Adain(128, latent_size=latent_size, padding_type=padding_type, activation=activation)]
         self.BottleNeck = nn.Sequential(*BN)
 
+        ### upsample
         if self.deep:
-            self.up4 = nn.Sequential(
-                nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-                nn.Conv2d(512, 512, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(512), activation
-            )
-        self.up3 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-            nn.Conv2d(512, 256, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(256), activation
-        )
-        self.up2 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-            nn.Conv2d(256, 128, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(128), activation
-        )
-        self.up1 = nn.Sequential(
-            nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-            nn.Conv2d(128, 64, kernel_size=3, stride=1, padding=1),
-            nn.BatchNorm2d(64), activation
-        )
+            self.up4 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                     ConvDepthConv(128, 128, 128, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up3 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 ConvDepthConv(128, 128, 256, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up2 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 ConvDepthConv(256, 128, 128, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up1 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 ConvDepthConv(128, 64, 64, 3, 1, norm_layer=norm_layer, activation=activation))
+
         self.last_layer = nn.Sequential(nn.ReflectionPad2d(3), nn.Conv2d(64, output_nc, kernel_size=7, padding=0))
 
     def forward(self, input, dlatents):
-        x = input  # 3*224*224
+        x = input
 
         skip1 = self.first_layer(x)
         skip2 = self.down1(skip1)
@@ -157,71 +128,96 @@ class Generator_Adain_Upsample(nn.Module):
             bot.append(x)
 
         if self.deep:
-            x = self.up4(x)
-            features.append(x)
-        x = self.up3(x)
-        features.append(x)
-        x = self.up2(x)
-        features.append(x)
-        x = self.up1(x)
-        features.append(x)
-        x = self.last_layer(x)
-        # x = (x + 1) / 2
+            y4 = self.up4(x)
+            features.append(y4)
+            y3 = self.up3(y4)
+            features.append(y3)
+        else:
+            y3 = self.up3(x)
+            features.append(y3)
+        y2 = self.up2(y3)
+        features.append(y2)
+        y1 = self.up1(y2)
+        features.append(y1)
+        y = self.last_layer(y1)
+        # y = (y + 1) / 2
 
-        # return x, bot, features, dlatents
-        return x
+        # return y, bot, features, dlatents
+        return y
 
-if __name__ == "__main__":
-    model = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=9, deep=False)
-    input_tensor = torch.randn(1, 3, 256, 256)
-    dlatents = torch.randn(1, 512)
+#-----------------------------------------------------------
 
-    mode = 'profile'
-    # mode = 'onnx'
+class Generator_Adain_Upsample(nn.Module):
+    def __init__(self, input_nc, output_nc, latent_size, n_blocks=3, deep=False,
+                 norm_layer=nn.BatchNorm2d,
+                 padding_type='reflect'):
+        assert (n_blocks >= 0)
+        super(Generator_Adain_Upsample, self).__init__()
 
-    if mode == 'profile':
-        try:
-            from thop import profile
-            from thop.vision.basic_hooks import count_parameters
+        activation = nn.ReLU(True)
 
-            custom_ops = {}
-            def count_relu(m, x, y):
-                x = x[0]
-                nelements = x.numel()
-                m.total_ops += nelements
+        self.deep = deep
 
-            custom_ops[nn.ReLU] = count_relu
+        self.first_layer = nn.Sequential(nn.ReflectionPad2d(3),
+                                         DepthConv(input_nc, 64, kernel_size=7, padding=0, norm_layer=norm_layer, activation=activation))
+        ### downsample
+        self.down1 = DepthConv(64, 128, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down2 = DepthConv(128, 256, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down3 = DepthConv(256, 128, 3, 2, norm_layer=norm_layer, activation=activation)
+        if self.deep:
+            self.down4 = DepthConv(128, 128, 3, 2, norm_layer=norm_layer, activation=activation)
 
-            flops, params = profile(model, inputs=(input_tensor, dlatents), custom_ops=custom_ops)
-            print(f'FLOPs: {flops}, Params: {params}')
-            # print(f"FLOPs: {flops/1e9:.2f}G, Params: {params/1e6:.2f}M")
-        except Exception as e:
-            print(f"Error in thop: {e}")
+        ### resnet blocks
+        BN = []
+        for i in range(n_blocks):
+            BN += [ResnetBlock_Adain(128, latent_size=latent_size, padding_type=padding_type, activation=activation)]
+        self.BottleNeck = nn.Sequential(*BN)
 
-    elif mode == 'onnx':
-        model.eval()
-        input_names = ['input_image', 'latent_code']
-        output_names = ['output_image']
+        ### upsample
+        if self.deep:
+            self.up4 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                     DepthConv(128, 128, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up3 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 DepthConv(128, 256, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up2 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 DepthConv(256, 128, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up1 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 DepthConv(128, 64, 3, 1, norm_layer=norm_layer, activation=activation))
 
-        dynamic_axes = {
-            'input_image': {0: 'batch_size'},
-            'latent_code': {0: 'batch_size'},
-            'output_image': {0: 'batch_size'}
-        }
+        self.last_layer = nn.Sequential(nn.ReflectionPad2d(3), nn.Conv2d(64, output_nc, kernel_size=7, padding=0))
 
-        try:
-            torch.onnx.export(model,
-                            (input_tensor, dlatents),
-                            "SimSwap.onnx",
-                            verbose=True,
-                            input_names=input_names,
-                            output_names=output_names,
-                            opset_version=11,
-                            do_constant_folding=True,
-                            dynamic_axes=dynamic_axes)
-            print("Success to export onnx.")
-        except Exception as e:
-            print(f"Error in onnx: {e}")
+    def forward(self, input, dlatents):
+        x = input
 
-    else:
-        print("Unsupported mode. Use 'profile' or 'onnx'.")
+        skip1 = self.first_layer(x)
+        skip2 = self.down1(skip1)
+        skip3 = self.down2(skip2)
+        if self.deep:
+            skip4 = self.down3(skip3)
+            x = self.down4(skip4)
+        else:
+            x = self.down3(skip3)
+        bot = []
+        bot.append(x)
+        features = []
+        for i in range(len(self.BottleNeck)):
+            x = self.BottleNeck[i](x, dlatents)
+            bot.append(x)
+
+        if self.deep:
+            y4 = self.up4(x)
+            features.append(y4)
+            y3 = self.up3(y4)
+            features.append(y3)
+        else:
+            y3 = self.up3(x)
+            features.append(y3)
+        y2 = self.up2(y3)
+        features.append(y2)
+        y1 = self.up1(y2)
+        features.append(y1)
+        y = self.last_layer(y1)
+        # y = (y + 1) / 2
+
+        # return y, bot, features, dlatents
+        return y
