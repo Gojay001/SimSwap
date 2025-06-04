@@ -216,7 +216,7 @@ def run(opt):
                 loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_gt)).mean()
 
                 real_feat       = model.netD.get_feature(gt_img)
-                feat_match_loss = model.criterionFeat(feat["3"],real_feat["3"])
+                feat_match_loss = model.criterionFeat(feat["3"], real_feat["3"])
 
                 loss_G          = loss_Gmain + loss_G_ID * opt.lambda_id + feat_match_loss * opt.lambda_feat
 
@@ -236,13 +236,13 @@ def run(opt):
         if (step + 1) % opt.log_frep == 0:
             # errors = {k: v.data.item() if not isinstance(v, int) else v for k, v in loss_dict.items()}
             errors = {
-                "G_Loss":loss_Gmain.item(),
-                "G_ID":loss_G_ID.item(),
-                "G_Rec":loss_G_Rec.item(),
-                "G_feat_match":feat_match_loss.item(),
-                "D_fake":loss_Dgen.item(),
-                "D_real":loss_Dreal.item(),
-                "D_loss":loss_D.item()
+                "Train_G/Loss":loss_Gmain.item(),
+                "Train_G/loss_ID":loss_G_ID.item(),
+                "Train_G/loss_Rec":loss_G_Rec.item(),
+                "Train_G/loss_feat_match":feat_match_loss.item(),
+                "Train_D/loss_fake":loss_Dgen.item(),
+                "Train_D/loss_real":loss_Dreal.item(),
+                "Train_D/Loss":loss_D.item()
             }
             if opt.use_tensorboard:
                 for tag, value in errors.items():
@@ -279,30 +279,17 @@ def run(opt):
                 for i in range(opt.batchSize):
                     res_imgs.append(cur_res_imgs[i,...])
 
+                if opt.save_gt:
+                    cur_gt_imgs = ((gt_img.cpu()) * imagenet_std + imagenet_mean).numpy()
+                    for i in range(opt.batchSize):
+                        res_imgs.append(cur_gt_imgs[i,...])
+
                 print("Save test data")
                 res_imgs = np.stack(res_imgs, axis = 0).transpose(0,2,3,1)
                 plot_batch(res_imgs, opt.batchSize, os.path.join(sample_path, 'step_'+str(step+1)+'.jpg'))
 
-                if opt.save_gt:
-                    ref_imgs = list()
-
-                    cur_source_imgs = ((source_img.cpu())* imagenet_std + imagenet_mean).numpy()
-                    for i in range(opt.batchSize):
-                        ref_imgs.append(cur_source_imgs[i,...])
-
-                    cur_target_imgs = ((target_img.cpu())* imagenet_std + imagenet_mean).numpy()
-                    for i in range(opt.batchSize):
-                        ref_imgs.append(cur_target_imgs[i,...])
-
-                    cur_gt_imgs = ((gt_img.cpu())* imagenet_std + imagenet_mean).numpy()
-                    for i in range(opt.batchSize):
-                        ref_imgs.append(cur_gt_imgs[i,...])
-
-                    ref_imgs = np.stack(ref_imgs, axis = 0).transpose(0,2,3,1)
-                    plot_batch(ref_imgs, opt.batchSize, os.path.join(sample_path, 'ref_gt_step_'+str(step+1)+'.jpg'))
-
         ### save latest model
-        if (step+1) % opt.model_freq==0:
+        if (step+1) % opt.model_freq == 0:
             print('saving the latest model (steps %d)' % (step+1))
             model.save(step+1)
             np.savetxt(iter_path, (step+1, total_step), delimiter=',', fmt='%d')
