@@ -162,10 +162,7 @@ def run(opt):
     imagenet_std    = torch.Tensor([0.229, 0.224, 0.225]).view(3,1,1)
     imagenet_mean   = torch.Tensor([0.485, 0.456, 0.406]).view(3,1,1)
 
-    train_loader    = GetLoader(opt.dataset,opt.batchSize,8,1234)
-
-    # randindex = [i for i in range(opt.batchSize)]
-    # random.shuffle(randindex)
+    train_loader    = GetLoader(opt.dataset, opt.batchSize, 8)
 
     if not opt.continue_train:
         start   = 0
@@ -184,7 +181,6 @@ def run(opt):
     for step in range(start, total_step):
         model.netG.train()
         for interval in range(2):
-            # random.shuffle(randindex)
             source_img, target_img, gt_img  = train_loader.next()
 
             img_id_112 = F.interpolate(source_img, size=(112,112), mode='bicubic')
