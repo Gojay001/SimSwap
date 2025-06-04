@@ -22,6 +22,8 @@ class InstanceNorm(nn.Module):
 class DepthConv(nn.Module):
     """
     DepthwiseConv + Conv2
+    if use BN: Depthwise(Conv + BN), Pointwise(Conv + BN + ReLU)
+    if use IN: Depthwise(Conv), Pointwise(Conv + IN)
 
     in_channels:   input channel
     out_channels:  output channel
@@ -38,16 +40,16 @@ class DepthConv(nn.Module):
         self.norm_layer = args.get('norm_layer', nn.BatchNorm2d)
         self.activation = args.get('activation', nn.ReLU(True))
 
-        self.depthwise = nn.Sequential(
-            nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, groups=in_channels, padding=padding, dilation=dilation),
-            self.norm_layer(in_channels),
-        )
+        depthwise = [nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, groups=in_channels, padding=padding, dilation=dilation)]
+        if self.norm_layer == nn.BatchNorm2d:
+            depthwise.append(self.norm_layer(in_channels))
+        self.depthwise = nn.Sequential(*depthwise)
 
-        self.pointwise = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0),
-            self.norm_layer(out_channels),
-            self.activation
-        )
+        pointwise = [nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0),
+                     self.norm_layer(out_channels)]
+        if self.norm_layer == nn.BatchNorm2d:
+            pointwise.append(self.activation)
+        self.pointwise = nn.Sequential(*pointwise)
 
     def forward(self, x):
         x = self.depthwise(x)
