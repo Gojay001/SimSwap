@@ -193,7 +193,7 @@ def run(opt):
             if opt.learn_mask:
                 pred_img_with_mask = model.netG(target_img, latent_id)
                 pred_ori_img       = pred_img_with_mask[:, :3, :, :]
-                pred_mask_img      = pred_img_with_mask[:, -1, :, :].unsqueeze(1)
+                pred_mask_img      = pred_img_with_mask[:, -1, :, :].add(1.0).div(2.0).unsqueeze(1)
                 pred_img           = pred_ori_img * pred_mask_img + target_img * (1 - pred_mask_img)
             else:
                 pred_img = model.netG(target_img, latent_id)
@@ -293,7 +293,7 @@ def run(opt):
                 if opt.learn_mask:
                     pred_img_with_mask = model.netG(target_img, id_vector_source)
                     pred_ori_img       = pred_img_with_mask[:, :3, :, :]
-                    pred_mask_img      = pred_img_with_mask[:, -1, :, :].unsqueeze(1)
+                    pred_mask_img      = pred_img_with_mask[:, -1, :, :].add(1.0).div(2.0).unsqueeze(1)
                     pred_img           = pred_ori_img * pred_mask_img + target_img * (1 - pred_mask_img)
                 else:
                     pred_img = model.netG(target_img, id_vector_source)
@@ -303,7 +303,7 @@ def run(opt):
                     res_imgs.append(cur_res_imgs[i,...])
 
                 if opt.learn_mask:
-                    cur_mask_imgs = (pred_mask_img.add(1.0).mul(0.5).cpu()).numpy()
+                    cur_mask_imgs = (pred_mask_img.add(1.0).div(2.0).cpu()).numpy()
                     cur_mask_imgs_3ch = np.repeat(cur_mask_imgs, 3, axis=1)
                     for i in range(opt.batchSize):
                         res_imgs.append(cur_mask_imgs_3ch[i,...])
