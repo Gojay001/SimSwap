@@ -77,6 +77,8 @@ class TrainOptions:
         self.parser.add_argument('--Gdeep', type=str2bool, default='False')
         self.parser.add_argument('--nBlock', type=int, default=3, help='number of blocks in the generator network')
 
+        self.parser.add_argument('--learn_mask', type=str2bool, default='False', help='whether to learn the mask for the swapped face')
+
         # for discriminators
         self.parser.add_argument('--lambda_feat', type=float, default=10.0, help='weight for feature matching loss')
         self.parser.add_argument('--lambda_id', type=float, default=30.0, help='weight for id loss')
@@ -183,17 +185,28 @@ def run(opt):
         model.netG.train()
         for interval in range(2):
             source_img, target_img, gt_img  = train_loader.next()
+            gt_img_scale = gt_img.mul(2.0).sub(1.0)
+            gt_img_norm = gt_img.sub(imagenet_mean.cuda()).div(imagenet_std.cuda())
 
             img_id_112 = F.interpolate(source_img, size=(112,112), mode='bicubic')
             latent_id  = model.netArc(img_id_112)
             latent_id  = F.normalize(latent_id, p=2, dim=1)
 
+            if opt.learn_mask:
+                pred_img_with_mask = model.netG(target_img, latent_id)
+                pred_ori_img       = pred_img_with_mask[:, :3, :, :]
+                pred_mask_img      = pred_img_with_mask[:, -1, :, :].unsqueeze(1)
+                pred_img           = pred_ori_img * pred_mask_img + target_img * (1 - pred_mask_img)
+            else:
+                pred_img = model.netG(target_img, latent_id)
+
             if interval:
-                img_fake        = model.netG(target_img, latent_id)
-                gen_logits, _   = model.netD(img_fake.detach(), None)
+                # Fake loss
+                gen_logits, _   = model.netD(pred_img.detach(), None)
                 loss_Dgen       = (F.relu(torch.ones_like(gen_logits) + gen_logits)).mean()
 
-                real_logits, _  = model.netD(gt_img, None)
+                # Real loss
+                real_logits, _  = model.netD(gt_img_scale, None)
                 loss_Dreal      = (F.relu(torch.ones_like(real_logits) - real_logits)).mean()
 
                 loss_D          = loss_Dgen + loss_Dreal
@@ -202,29 +215,33 @@ def run(opt):
                 optimizer_D.step()
             else:
                 # model.netD.requires_grad_(True)
+
                 # G loss
-                img_fake        = model.netG(target_img, latent_id)
-                gen_logits,feat = model.netD(img_fake, None)
+                gen_logits,feat = model.netD(pred_img, None)
                 loss_Gmain      = (-gen_logits).mean()
 
-                img_fake_down   = F.interpolate(img_fake, size=(112,112), mode='bicubic')
-                latent_fake     = model.netArc(img_fake_down)
+                # ID loss
+                pred_img_down   = F.interpolate(pred_img, size=(112,112), mode='bicubic')
+                latent_fake     = model.netArc(pred_img_down)
                 latent_fake     = F.normalize(latent_fake, p=2, dim=1)
 
-                image_gt_down   = F.interpolate(gt_img, size=(112,112), mode='bicubic')
+                image_gt_down   = F.interpolate(gt_img_norm, size=(112,112), mode='bicubic')
                 latent_gt       = model.netArc(image_gt_down)
                 latent_gt       = F.normalize(latent_gt, p=2, dim=1)
                 loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_gt)).mean()
 
-                real_feat       = model.netD.get_feature(gt_img)
+                # Feature matching loss
+                real_feat       = model.netD.get_feature(gt_img_norm)
                 feat_match_loss = model.criterionFeat(feat["3"], real_feat["3"])
 
                 loss_G          = loss_Gmain + loss_G_ID * opt.lambda_id + feat_match_loss * opt.lambda_feat
 
-                # if step%2 == 0:
-                #G_Rec
-                loss_G_Rec  = model.criterionRec(img_fake, gt_img) * opt.lambda_rec
-                loss_G      += loss_G_Rec
+                # Reconstruction loss
+                loss_G_Rec  = model.criterionRec(pred_img, gt_img_scale) * opt.lambda_rec
+                if opt.learn_mask:
+                    loss_G_Rec += model.criterionRec(pred_ori_img, gt_img_scale) * opt.lambda_rec
+
+                loss_G     += loss_G_Rec
 
                 optimizer_G.zero_grad()
                 loss_G.backward()
@@ -274,14 +291,27 @@ def run(opt):
                 arcface_112      = F.interpolate(source_img, size=(112,112), mode='bicubic')
                 id_vector_source = model.netArc(arcface_112)
                 id_vector_source = F.normalize(id_vector_source, p=2, dim=1)
-                img_fake         = model.netG(target_img, id_vector_source)
 
-                cur_res_imgs = ((img_fake.cpu()) * imagenet_std + imagenet_mean).numpy()
+                if opt.learn_mask:
+                    pred_img_with_mask = model.netG(target_img, id_vector_source)
+                    pred_ori_img       = pred_img_with_mask[:, :3, :, :]
+                    pred_mask_img      = pred_img_with_mask[:, -1, :, :].unsqueeze(1)
+                    pred_img           = pred_ori_img * pred_mask_img + target_img * (1 - pred_mask_img)
+                else:
+                    pred_img = model.netG(target_img, id_vector_source)
+
+                cur_res_imgs = (pred_img.add(1.0).mul(0.5).cpu()).numpy()
                 for i in range(opt.batchSize):
                     res_imgs.append(cur_res_imgs[i,...])
 
+                if opt.learn_mask:
+                    cur_mask_imgs = (pred_mask_img.add(1.0).mul(0.5).cpu()).numpy()
+                    cur_mask_imgs_3ch = np.repeat(cur_mask_imgs, 3, axis=1)
+                    for i in range(opt.batchSize):
+                        res_imgs.append(cur_mask_imgs_3ch[i,...])
+
                 if opt.save_gt:
-                    cur_gt_imgs = ((gt_img.cpu()) * imagenet_std + imagenet_mean).numpy()
+                    cur_gt_imgs = (gt_img.cpu()).numpy()
                     for i in range(opt.batchSize):
                         res_imgs.append(cur_gt_imgs[i,...])
 

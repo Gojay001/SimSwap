@@ -32,7 +32,6 @@ class data_prefetcher():
             self.target_img  = self.target_img.cuda(non_blocking=True)
             self.target_img  = self.target_img.sub_(self.mean).div_(self.std)
             self.gt_img      = self.gt_img.cuda(non_blocking=True)
-            self.gt_img      = self.gt_img.sub_(self.mean).div_(self.std)
 
     def next(self):
         torch.cuda.current_stream().wait_stream(self.stream)

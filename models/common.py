@@ -97,3 +97,28 @@ class ConvDepthConv(nn.Module):
         out = self.depthwise(out)
         out = self.conv2(out)
         return out
+
+#-------------------------------------------
+
+class Decoder_DepthConv(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, padding=1, dilation=1, **args):
+        super(Decoder_DepthConv, self).__init__()
+
+        self.norm_layer = args.get('norm_layer', nn.BatchNorm2d)
+        self.add_last_activation = args.get('add_last_activation', True)
+
+        self.depthwise = nn.Sequential(
+            nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=stride, groups=in_channels, padding=padding, dilation=dilation),
+            self.norm_layer(in_channels)
+        )
+
+        pointwise = [nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0),
+                     self.norm_layer(out_channels)]
+        if self.add_last_activation:
+            pointwise.append(nn.Tanh())
+        self.pointwise = nn.Sequential(*pointwise)
+
+    def forward(self, x):
+        x = self.depthwise(x)
+        x = self.pointwise(x)
+        return x
