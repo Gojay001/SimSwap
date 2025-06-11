@@ -16,8 +16,6 @@ import random
 import argparse
 import numpy as np
 
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-
 import torch
 import torch.nn.functional as F
 import torch.utils.tensorboard as tensorboard

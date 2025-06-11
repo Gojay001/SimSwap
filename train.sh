@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=0 python train.py --name dsc2_id --batchSize 16 --learn_mask False --lambda_id 30 --lambda_rec 10
