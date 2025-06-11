@@ -73,15 +73,15 @@ class SwappingDataset(data.Dataset):
         print("processing Swapping dataset images...")
 
         name_to_path = {
-            'celeba': '/cephFS/gaojie/data/CelebAMask-HQ/CelebAMask-HQ/CelebA-HQ-img',
-            'eceleb': '/cephFS/gaojie/data/stylegan2/eceleb',
-            'model' : '/cephFS/gaojie/data/stylegan2/model',
+            'celeba': '/cephFS/gaojie/face_swap/train/celeba',
+            'eceleb': '/cephFS/gaojie/face_swap/train/eceleb',
+            'model' : '/cephFS/gaojie/face_swap/train/model',
         }
 
         subffix_jpg_data = ['celeba']
         subffix_png_data = ['eceleb', 'model']
 
-        gt_folders = ['celeba_to_celeba_sr_256', 'eceleb_to_model_sr_256', 'model_to_eceleb_sr_256']
+        gt_folders = ['celeba_to_celeba', 'eceleb_to_model', 'model_to_eceleb']
         for folder in gt_folders:
             if not os.path.exists(os.path.join(self.base_dir, folder)):
                 print(f"Folder {folder} does not exist in {self.base_dir}. Please check the path.")
@@ -143,7 +143,7 @@ def GetLoader(dataset_roots,
     data_root           = dataset_roots
 
     c_transforms = []
-    c_transforms.append(T.Resize((256, 256)))
+    # c_transforms.append(T.Resize((256, 256)))
     c_transforms.append(T.ToTensor())
     c_transforms = T.Compose(c_transforms)
 
