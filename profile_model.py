@@ -1,11 +1,11 @@
 import torch
 import torch.nn as nn
 
-from models.fs_networks_fix import Generator_Adain_Upsample, Generator_Adain_Upsample_DSC3
+from models.fs_networks_fix import Generator_Adain_Upsample, Generator_Adain_Upsample_DS2, Generator_Adain_Upsample_V2
 
 
 if __name__ == "__main__":
-    model = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=3, deep=False)
+    model = Generator_Adain_Upsample_V2(input_nc=3, output_nc=3, latent_size=512)
     input_tensor = torch.randn(1, 3, 256, 256)
     dlatents = torch.randn(1, 512)
 

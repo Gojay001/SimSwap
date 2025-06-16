@@ -34,6 +34,8 @@ def _totensor(array):
     tensor = torch.from_numpy(array)
     img = tensor.transpose(0, 1).transpose(0, 2).contiguous()
     return img.float().div(255)
+
+
 if __name__ == '__main__':
     opt = TestOptions().parse()
 
@@ -59,8 +61,9 @@ if __name__ == '__main__':
         pic_a = opt.pic_a_path
 
         img_a_whole = cv2.imread(pic_a)
-        img_a_align_crop, _ = app.get(img_a_whole,crop_size)
+        img_a_align_crop, _ = app.get(img_a_whole, crop_size)
         img_a_align_crop_pil = Image.fromarray(cv2.cvtColor(img_a_align_crop[0],cv2.COLOR_BGR2RGB))
+        img_a_align_crop_pil = img_a_align_crop_pil.resize((256, 256))
         img_a = transformer_Arcface(img_a_align_crop_pil)
         img_id = img_a.view(-1, img_a.shape[0], img_a.shape[1], img_a.shape[2])
 
@@ -78,7 +81,7 @@ if __name__ == '__main__':
         pic_b = opt.pic_b_path
         img_b_whole = cv2.imread(pic_b)
 
-        img_b_align_crop_list, b_mat_list = app.get(img_b_whole,crop_size)
+        img_b_align_crop_list, b_mat_list = app.get(img_b_whole, crop_size)
         # detect_results = None
         swap_result_list = []
 
@@ -86,9 +89,22 @@ if __name__ == '__main__':
 
         for b_align_crop in img_b_align_crop_list:
 
+            b_align_crop = cv2.resize(b_align_crop, (256, 256))
             b_align_crop_tenor = _totensor(cv2.cvtColor(b_align_crop,cv2.COLOR_BGR2RGB))[None,...].cuda()
 
+            imagenet_std    = torch.Tensor([0.229, 0.224, 0.225]).cuda().view(3,1,1)
+            imagenet_mean   = torch.Tensor([0.485, 0.456, 0.406]).cuda().view(3,1,1)
+            b_align_crop_tenor = b_align_crop_tenor.sub_(imagenet_mean).div_(imagenet_std)
+
             swap_result = model(None, b_align_crop_tenor, latend_id, None, True)[0]
+
+            swap_result = (swap_result + 1) / 2
+            res_img = swap_result.clone().detach().cpu()
+            res_img = res_img.permute(1, 2, 0).numpy()
+            res_img = np.clip(res_img * 255, 0, 255).astype(np.uint8)
+            res_img = cv2.cvtColor(res_img, cv2.COLOR_RGB2BGR)
+            cv2.imwrite(os.path.join(opt.output_path, 'swap_result.png'), res_img)
+
             swap_result_list.append(swap_result)
             b_align_crop_tenor_list.append(b_align_crop_tenor)
 
@@ -109,8 +125,8 @@ if __name__ == '__main__':
 
         cv2.imwrite(os.path.join(opt.output_path, 'res.png'), final_img)
 
-        save_img = cv2.hconcat([img_a_whole, img_b_whole, final_img])
-        cv2.imwrite(os.path.join(opt.output_path, save_name), save_img)
+        # save_img = cv2.hconcat([img_a_whole, img_b_whole, final_img])
+        # cv2.imwrite(os.path.join(opt.output_path, save_name), save_img)
 
         print(' ')
 

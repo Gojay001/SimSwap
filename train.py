@@ -229,7 +229,7 @@ def run(opt):
                 loss_G_ID       = (1 - model.cosin_metric(latent_fake, latent_gt)).mean()
 
                 # Feature matching loss
-                real_feat       = model.netD.get_feature(gt_img_norm)
+                real_feat       = model.netD.get_feature(gt_img_scale)
                 feat_match_loss = model.criterionFeat(feat["3"], real_feat["3"])
 
                 loss_G          = loss_Gmain + loss_G_ID * opt.lambda_id + feat_match_loss * opt.lambda_feat

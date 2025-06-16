@@ -362,6 +362,7 @@ class Generator_Adain_Upsample_DS2(nn.Module):
 
 class Generator_Adain_Upsample_V2(nn.Module):
     def __init__(self, input_nc, output_nc, latent_size, n_blocks=3, deep=True,
+                 learn_residual=False,
                  norm_layer=nn.BatchNorm2d,
                  padding_type='reflect'):
         assert (n_blocks >= 0)
@@ -370,15 +371,16 @@ class Generator_Adain_Upsample_V2(nn.Module):
         activation = nn.ReLU(True)
 
         self.deep = deep
+        self.learn_residual = learn_residual
 
         self.first_layer = nn.Sequential(nn.ReflectionPad2d(3),
                                          DepthConv(input_nc, 16, kernel_size=7, padding=0, norm_layer=norm_layer, activation=activation))
         ### downsample
         self.down1 = DepthConv(16, 16, 3, 2, norm_layer=norm_layer, activation=activation)
         self.down2 = DepthConv(16, 32, 3, 2, norm_layer=norm_layer, activation=activation)
-        self.down3 = DepthConv(32, 32, 3, 2, norm_layer=norm_layer, activation=activation)
-        if self.deep:
-            self.down4 = DepthConv(32, 64, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down3 = DepthConv(32, 64, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down4 = DepthConv(64, 64, 3, 2, norm_layer=norm_layer, activation=activation)
+        self.down5 = DepthConv(64, 64, 3, 2, norm_layer=norm_layer, activation=activation)
 
         ### resnet blocks
         BN = []
@@ -387,11 +389,12 @@ class Generator_Adain_Upsample_V2(nn.Module):
         self.BottleNeck = nn.Sequential(*BN)
 
         ### upsample
-        if self.deep:
-            self.up4 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-                                     DepthConv(64, 32, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up5 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 DepthConv(64, 64, 3, 1, norm_layer=norm_layer, activation=activation))
+        self.up4 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
+                                 DepthConv(64, 64, 3, 1, norm_layer=norm_layer, activation=activation))
         self.up3 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
-                                 DepthConv(32, 32, 3, 1, norm_layer=norm_layer, activation=activation))
+                                 DepthConv(64, 32, 3, 1, norm_layer=norm_layer, activation=activation))
         self.up2 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
                                  DepthConv(32, 16, 3, 1, norm_layer=norm_layer, activation=activation))
         self.up1 = nn.Sequential(nn.Upsample(scale_factor=2, mode='bilinear',align_corners=False),
@@ -408,7 +411,8 @@ class Generator_Adain_Upsample_V2(nn.Module):
         skip3 = self.down2(skip2)
         if self.deep:
             skip4 = self.down3(skip3)
-            x = self.down4(skip4)
+            skip5 = self.down4(skip4)
+            x = self.down5(skip5)
         else:
             x = self.down3(skip3)
         bot = []
@@ -419,19 +423,35 @@ class Generator_Adain_Upsample_V2(nn.Module):
             bot.append(x)
 
         if self.deep:
-            y4 = self.up4(x)
+            y5 = self.up5(x)
+            y5 = y5 + skip5
+            y5 = y5 * skip5
+            features.append(y5)
+            y4 = self.up4(y5)
+            y4 = y4 * skip4
             features.append(y4)
             y3 = self.up3(y4)
+            y3 = y3 * skip3
             features.append(y3)
         else:
             y3 = self.up3(x)
             features.append(y3)
         y2 = self.up2(y3)
+        # y2 = y2 * skip2
         features.append(y2)
         y1 = self.up1(y2)
+        # y1 = y1 * skip1
         features.append(y1)
         y = self.last_layer(y1)
         # y = (y + 1) / 2
+
+        if self.learn_residual:
+            if input.shape[1] == y.shape[1]:
+                y = input + y
+            else:
+                nc = input.shape[1]
+                y_nc3 = input + y[:, :nc, :, :]
+                y = torch.cat([y_nc3, y[:, nc:, :, :]], dim=1)
 
         # return y, bot, features, dlatents
         return y

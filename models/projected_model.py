@@ -41,7 +41,7 @@ class fsModel(BaseModel):
 
         # Generator network
         output_nc = 4 if opt.learn_mask else 3
-        self.netG = Generator_Adain_Upsample_DS2(input_nc=3, output_nc=output_nc, latent_size=512, n_blocks=opt.nBlock, deep=opt.Gdeep)
+        self.netG = Generator_Adain_Upsample_V2(input_nc=3, output_nc=output_nc, latent_size=512, learn_residual=opt.learn_residual)
         self.netG.cuda()
 
         # Id network

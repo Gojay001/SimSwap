@@ -50,13 +50,14 @@ class fsModel(BaseModel):
 
         device = torch.device("cuda:0")
 
-        if opt.crop_size == 224:
-            from .fs_networks import Generator_Adain_Upsample, Discriminator
+        if opt.crop_size == 224 or opt.crop_size == 256:
+            from .fs_networks_fix import Generator_Adain_Upsample_DS2
+            from . fs_networks import Discriminator
         elif opt.crop_size == 512:
-            from .fs_networks_512 import Generator_Adain_Upsample, Discriminator
+            from .fs_networks_fix import Generator_Adain_Upsample, Discriminator
 
         # Generator network
-        self.netG = Generator_Adain_Upsample(input_nc=3, output_nc=3, latent_size=512, n_blocks=9, deep=False)
+        self.netG = Generator_Adain_Upsample_DS2(input_nc=3, output_nc=3, latent_size=512, n_blocks=3, deep=False)
         self.netG.to(device)
 
         # Id network

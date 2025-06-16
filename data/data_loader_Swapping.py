@@ -75,13 +75,15 @@ class SwappingDataset(data.Dataset):
         name_to_path = {
             'celeba': '/cephFS/gaojie/face_swap/train/celeba',
             'eceleb': '/cephFS/gaojie/face_swap/train/eceleb',
+            'ffhq'  : '/cephFS/gaojie/face_swap/train/ffhq',
             'model' : '/cephFS/gaojie/face_swap/train/model',
+            'yellow': '/cephFS/gaojie/face_swap/train/yellow',
         }
 
         subffix_jpg_data = ['celeba']
-        subffix_png_data = ['eceleb', 'model']
+        subffix_png_data = ['eceleb', 'ffhq', 'model', 'yellow']
 
-        gt_folders = ['celeba_to_celeba', 'eceleb_to_model', 'model_to_eceleb']
+        gt_folders = ['celeba_to_celeba', 'eceleb_to_model', 'ffhq_to_ffhq', 'model_to_eceleb', 'yellow_to_yellow']
         for folder in gt_folders:
             if not os.path.exists(os.path.join(self.base_dir, folder)):
                 print(f"Folder {folder} does not exist in {self.base_dir}. Please check the path.")
