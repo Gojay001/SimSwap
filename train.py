@@ -76,6 +76,7 @@ class TrainOptions:
         self.parser.add_argument('--nBlock', type=int, default=3, help='number of blocks in the generator network')
 
         self.parser.add_argument('--learn_mask', type=str2bool, default='False', help='whether to learn the mask for the swapped face')
+        self.parser.add_argument('--learn_residual', type=str2bool, default='False', help='whether to learn the residual for the swapped face')
 
         # for discriminators
         self.parser.add_argument('--lambda_feat', type=float, default=10.0, help='weight for feature matching loss')
@@ -163,7 +164,7 @@ def run(opt):
     imagenet_std    = torch.Tensor([0.229, 0.224, 0.225]).view(3,1,1)
     imagenet_mean   = torch.Tensor([0.485, 0.456, 0.406]).view(3,1,1)
 
-    train_loader    = GetLoader(opt.dataset, opt.batchSize, 8)
+    train_loader    = GetLoader(opt.dataset, opt.batchSize, 32)
 
     if not opt.continue_train:
         start   = 0

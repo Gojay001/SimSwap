@@ -1,1 +1,10 @@
-CUDA_VISIBLE_DEVICES=0 python train.py --name dsc2_id --batchSize 16 --learn_mask False --lambda_id 30 --lambda_rec 10
+# CUDA_VISIBLE_DEVICES=0 python train.py --name dsc2_id --batchSize 16 --learn_mask False --lambda_id 30 --lambda_rec 10
+# CUDA_VISIBLE_DEVICES=3 python train.py --name v2_skip --batchSize 32 --learn_mask False --learn_residual False --lambda_id 10 --lambda_rec 30
+# CUDA_VISIBLE_DEVICES=2 python train.py --name v2_deep --batchSize 32 --learn_mask False --learn_residual False --lambda_id 10 --lambda_rec 30
+# CUDA_VISIBLE_DEVICES=1 python train.py --name v2_skip2 --batchSize 32 --learn_mask False --learn_residual False --lambda_id 10 --lambda_rec 30
+# CUDA_VISIBLE_DEVICES=0 python train.py --name v2_skip_residual_mask --batchSize 32 --learn_mask True --learn_residual True --lambda_id 10 --lambda_rec 30
+# CUDA_VISIBLE_DEVICES=1 python train.py --name v2_mask_residual --batchSize 32 --learn_mask True --learn_residual True --lambda_id 30 --lambda_rec 10
+# CUDA_VISIBLE_DEVICES=0 python train.py --name v2_residual --batchSize 32 --learn_mask False --learn_residual True --lambda_id 30 --lambda_rec 10
+# CUDA_VISIBLE_DEVICES=2 python train.py --name dsc_residual --batchSize 16 --learn_mask False --learn_residual True --lambda_id 30 --lambda_rec 10
+# CUDA_VISIBLE_DEVICES=3 python train.py --name v2.1 --batchSize 32 --learn_mask False --learn_residual False --lambda_id 10 --lambda_rec 30
+CUDA_VISIBLE_DEVICES=1 python train.py --name dsc_21 --batchSize 16 --learn_mask False --learn_residual False --lambda_id 10 --lambda_rec 30

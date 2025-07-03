@@ -15,7 +15,7 @@ import torch
 import torch.nn as nn
 
 from .base_model import BaseModel
-from .fs_networks_fix import Generator_Adain_Upsample, Generator_Adain_Upsample_DS2, Generator_Adain_Upsample_V2
+from .fs_networks_fix import Generator_Adain_Upsample, Generator_Adain_Upsample_DS2
 
 from pg_modules.projected_discriminator import ProjectedDiscriminator
 
@@ -41,7 +41,7 @@ class fsModel(BaseModel):
 
         # Generator network
         output_nc = 4 if opt.learn_mask else 3
-        self.netG = Generator_Adain_Upsample_V2(input_nc=3, output_nc=output_nc, latent_size=512, learn_residual=opt.learn_residual)
+        self.netG = Generator_Adain_Upsample_DS2(input_nc=3, output_nc=output_nc, latent_size=512, learn_residual=opt.learn_residual)
         self.netG.cuda()
 
         # Id network
